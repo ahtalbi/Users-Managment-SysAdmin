@@ -1,81 +1,129 @@
-You’ve understood the main parts. Here is the full picture, so you can see what’s missing.
+<!-- PAM -->
 
-## What you got right
+# Configuring PAM
 
-- You create 3 users, one per role.
-- You don’t touch root.
-- You don’t edit `/etc/sudoers` directly. You add your own files in `/etc/sudoers.d/`, which sudo reads automatically.
-- You need a shared directory.
+To configure PAM, we need to change 3 files.
 
-## What’s missing
+## 1 - /etc/security/faillock.conf
 
-### 1. The shared directory has two parts, not one
+Uncomment these lines (remove the `#` at the start):
 
-- `/srv/shared`: admin and developer can write, deploy can only read, everyone else gets nothing. It uses setgid plus ACLs.
-- `/srv/scratch`: anyone can write, but you can only delete your own files. It uses the sticky bit.
-
-### 2. The password policy
-
-- Passwords expire after N days (`chage`).
-- Accounts lock after repeated failed logins (PAM).
-
-### 3. SSH, which you said you don’t have yet
-
-You need to install it first:
-
-```bash
-apt install openssh-server
+```
+deny = 3
+unlock_time = 1200
+fail_interval = 900
 ```
 
-Then each user gets a key, you confirm key login works, and only after that do you disable password login. If you do it in the other order, you lock yourself out.
+Explanation:
 
-### 4. verify.sh
-
-A script that tries forbidden actions as each user and prints `PASS` if they are denied. It exits with a non-zero code if any check fails.
-
-### 5. The repo
-
-`README.md`, `sudoers.d/` (copies of your files), and `verify.sh`.
-
-## The key idea: who can do what
-
-| | Sudo | Shared dir | Install packages | Manage users |
-|---|---|---|---|---|
-| **admin** | everything | read + write | yes | yes |
-| **developer** | only restart your service | read + write | no | no |
-| **deploy** | only restart your service | read only | no | no |
-
-Think of it as three layers of control:
-
-1. **sudo** decides what commands each user can run as root.
-2. **File permissions and ACLs** decide who can touch the shared directory.
-3. **SSH** decides how users get into the server at all.
-
-The whole project is about setting these up so each role gets exactly its row in the table, and nothing more.
-
-## Your order of work
-
-1. Create the 3 users and the group.
-2. Write the sudoers files (this is the hardest part).
-3. Set up the password policy.
-4. Create the two directories.
-5. Install and configure SSH.
-6. Write `verify.sh` (add checks as you finish each step).
-7. Write the README.
-
-## Start now
-
-Step 1 takes 5 minutes. Run this in your VM as root, and replace the names if you want:
-
-```bash
-groupadd team
-useradd -m -s /bin/bash -G team,sudo alice    # admin
-useradd -m -s /bin/bash -G team bob           # developer
-useradd -m -s /bin/bash carol                 # deploy
-passwd alice; passwd bob; passwd carol
-id alice; id bob; id carol
+```
+deny = 3: lock after 3 failed attempts
+unlock_time = 1200: locked for 1200 seconds (20 minutes)
+fail_interval = 900: the 3 failures must happen within 15 minutes (adjust if your spec says otherwise)
 ```
 
-Notice that only alice is in the sudo group, because that is how she gets full admin rights. Bob and carol are not, so they start with nothing.
+## 2 - /etc/pam.d/common-auth
 
-Run these and send me the output of the three `id` commands. Then we move to the sudoers part.
+First of all, be careful: if you make a mistake in this file, your system can lock you out. So before editing it, keep a second terminal open (with a root session) in case something goes wrong, and make a backup copy of the file:
+
+```
+sudo cp /etc/pam.d/common-auth /etc/pam.d/common-auth.bak
+```
+
+![PAMcommonauth](./assets/PAM-commun-auth.png)
+
+## 3 - /etc/pam.d/common-account
+
+It should look something like this:
+
+![PAMFaillock](./assets/PAM-faillock.png)
+
+## Checking and resetting failed attempts
+
+To check failed attempts and get more details, use the `faillock` command:
+
+```
+faillock
+faillock --user username
+```
+
+To reset a user who has been locked out, run:
+
+```
+faillock --user username --reset
+```
+
+# Configuring the Shared Directory
+
+The best way to configure a folder is to use **2 groups** instead of setting permissions for every user one by one with ACLs (Access Control Lists). Once the groups exist, I only add or remove users from the groups, and the access changes by itself. Each group has a role.
+
+| Group | Role | Rights on the folder | Members |
+|---|---|---|---|
+| `projectteam` | writers | read, write, enter (`rwx`) | `admin1`, `dev1` |
+| `project-readers` | readers | read, enter (`r-x`) | `deploy1` |
+
+Everyone else has no access.
+
+## 1. Create the groups and add the users
+
+```bash
+addgroup projectteam
+addgroup project-readers
+adduser admin1 projectteam
+adduser dev1 projectteam
+adduser deploy1 project-readers
+```
+
+## 2. Create the folder
+
+```bash
+mkdir /srv/project
+```
+
+## 3. Give the folder to the writers group
+
+```bash
+chown root:projectteam /srv/project
+```
+
+## 4. Set the base permissions
+
+```bash
+chmod 2770 /srv/project
+```
+
+- `2` = setgid: new files get the group `projectteam`
+- `7` = owner: read, write, enter
+- `7` = group: read, write, enter
+- `0` = others: nothing
+
+## 5. Give the readers group access (ACL)
+
+```bash
+setfacl -m g:project-readers:rx /srv/project
+```
+
+`-m` means "add this rule". `g:project-readers:rx` means "the group `project-readers` gets read and enter".
+
+## 6. Make new files follow the same rules (default ACL)
+
+```bash
+setfacl -d -m u::rwx /srv/project
+setfacl -d -m g::rwx /srv/project
+setfacl -d -m o::--- /srv/project
+setfacl -d -m g:project-readers:rx /srv/project
+```
+
+`-d` means "default": a template copied to every new file or folder.
+
+- `u::rwx`: the creator of the file can do everything
+- `g::rwx`: the writers group can edit the file (no `chmod` needed)
+- `o::---`: others get nothing
+- `g:project-readers:rx`: the readers group can read the file
+
+## 7. Check
+
+```bash
+ls -ld /srv/project
+getfacl /srv/project
+```
