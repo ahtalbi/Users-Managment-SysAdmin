@@ -1,3 +1,6 @@
+![intro](./assets/A_README_intro.png)
+
+
 <!-- PAM -->
 
 # Configuring PAM
