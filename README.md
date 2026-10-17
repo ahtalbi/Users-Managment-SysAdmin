@@ -1,23 +1,30 @@
 ![intro](./assets/A_README_intro.png)
 
-# OverView
+# Structure Of Readme File
 
+01 — Project Overview
+02 — System Prerequisites
+03 — Users and Role Groups
+04 — Sudo Privileges Configuration
+05 — Password and Account Security
+    05.1 — Password Expiration Management (chage)
+    05.2 — Login Failure Protection (PAM)
+06 — Shared Storage and Directory Management
+    06.1 — Project Workspace
+    06.2 — Temporary Workspace
+    06.3 — Permission Mechanisms Comparison
+07 — SSH Service Security
+08 — Verification Script
+09 — Repository Structure
+10 — Conclusion
+
+# OverView
 This project is based on the [Linux project](https://github.com/ahtalbi/Linux-Sysadmin.git). We continue on the same Debian server that was built there, including the systemd service that was created in that project. The service is the one the roles are allowed to restart.
 
 ## Goal
-
 A server where everyone logs in as root is not administered, it is only switched on. The goal is to give each person **exactly the access their role needs, and nothing more** (the principle of least privilege), and then to **prove it with a script**.
 
-## The team
-
-| Role | User | Group | Can | Cannot |
-|---|---|---|---|---|
-| admin | `admin1` | `projectteam` | manage users, install packages, restart any service, read and write the project folder | nothing is restricted |
-| developer | `dev1` | `projectteam` | read and write the project folder, restart only the service | install packages, manage users |
-| deploy | `deploy1` | `project-readers` | restart only the service, read the project folder | write to the project folder, install packages, manage users |
-
-## What we build
-
+## What we have to build
 - **SSH keys:** one key per user, and password login disabled.
 - **Groups and ACLs:** a shared project folder where the writers group can edit and the readers group can only read.
 - **sudo rules:** one file per role in `/etc/sudoers.d/`, limited to specific commands.
@@ -25,16 +32,112 @@ A server where everyone logs in as root is not administered, it is only switched
 - **Scratch directory:** a shared folder where users can delete only their own files (sticky bit).
 - **Verification script:** `verify.sh` tries every forbidden action and checks that it is denied.
 
-## What to understand before starting
+# Users and Role Groups
 
-- **Least privilege:** give the minimum access needed for the job.
-- **Users and groups:** a group is a list of users sharing the same rights. Access is managed by adding or removing people from groups.
-- **File permissions:** `rwx`, and the fact that on a folder `x` means "enter" and `w` means "create and delete inside".
-- **Special bits:** setgid makes new files inherit the folder's group, and the sticky bit stops users from deleting each other's files.
-- **ACLs:** extra rules for a file or folder when owner, group and others are not enough. A default ACL is a template for new files.
-- **sudo:** lets a user run specific commands as root. On Debian, the `sudo` group gives full root, so only `admin1` may be in it.
-- **PAM:** the system that runs on every login, where the lockout rule lives.
-- **SSH keys:** the private key stays with the user, the public key goes on the server. Test the key before disabling passwords.
+Here we initialized the users and added one group for every role, as shown in the image:
+
+![users groups creation](./assets/USERS_GROUPS_creation.png)
+
+## The team
+
+| Role | User | Role group |
+|---|---|---|
+| admin | `admin1` | `admin` |
+| developer | `dev1` | `developer` |
+| deploy | `deploy1` | `deploy` |
+
+## Add users to theire groups
+
+```bash
+adduser admin1 admin
+adduser dev1 developer
+adduser deploy1 deploy
+```
+## Check The groups
+
+```bash
+id admin1
+id dev1
+id deploy1
+getent group admin developer deploy
+```
+
+### Sudo Configuration
+
+Privileges are not written in `/etc/sudoers`. Each role group gets its own file in `/etc/sudoers.d/`, and every file is checked with `visudo`.
+
+| File | Content |
+|---|---|
+| `/etc/sudoers.d/admin` | `%admin ALL=(ALL:ALL) ALL` |
+| `/etc/sudoers.d/developer` | `%developer ALL=(root) NOPASSWD: /usr/bin/systemctl restart myservice` |
+| `/etc/sudoers.d/deploy` | `%deploy ALL=(root) NOPASSWD: /usr/bin/systemctl restart myservice` |
+
+Created with:
+
+    visudo /etc/sudoers.d/admin
+    visudo /etc/sudoers.d/developer
+    visudo /etc/sudoers.d/deploy
+
+Least-privilege rules:
+
+- Privileges are granted to groups, never directly to users.
+- Only `admin1` has full privileges, through `%admin ALL=(ALL:ALL) ALL`.
+- Nobody is in the `sudo` group: on Debian it already grants `ALL=(ALL:ALL) ALL` and would override any scoped rule.
+- Command-scoped rules only: developer and deploy can run only `/usr/bin/systemctl restart myservice`.
+
+
+## to run sudo you must install it
+```
+apt install sudo
+```
+
+Verify with:
+
+    sudo -l -U admin1
+    sudo -l -U dev1
+    sudo -l -U deploy1
+
+Only `admin1` has full privileges. Any other role showing them is a policy failure.
+
+![Users permessions](./assets/USERS_permessions.png)
+
+## to test acces the users with
+```
+su - admin1 ## then any command should work
+su - dev1 ## then only the restart should work
+```
+
+### Password Policy
+
+Two rules protect the passwords of the users: they expire after a set number of days (`chage`), and accounts lock after repeated failed logins (PAM).
+
+#### Password Expiration (chage)
+
+Password aging is set per user with `chage`. It updates the aging fields in `/etc/shadow`, so the file is never edited by hand.
+
+Command used:
+
+    sudo chage -m 7 -M 90 -W 14 -I 30 <username>
+
+| Option | Value | Meaning |
+|---|---|---|
+| `-m` | 7 | minimum days before the user may change the password again |
+| `-M` | 90 | maximum days a password stays valid |
+| `-W` | 14 | days of warning before the password expires |
+| `-I` | 30 | days after expiry before the account is disabled |
+
+Useful commands:
+
+- Check the aging rules of a user: `sudo chage -l <username>`
+- Change only the maximum age, for example: `sudo chage -M 90 <username>`
+
+Example of one user:
+    sudo chage -m 7 -M 90 -W 14 -I 30 admin1
+
+Verify with `sudo chage -l <username>`:
+
+![chage result](./assets/PASSWORD_chage.png)
+
 
 # Configuring PAM
 
@@ -57,6 +160,7 @@ deny = 3: lock after 3 failed attempts
 unlock_time = 1200: locked for 1200 seconds (20 minutes)
 fail_interval = 900: the 3 failures must happen within 15 minutes (adjust if your spec says otherwise)
 ```
+![PAMcommonauth](./assets/PAM-faillock.png)
 
 ## 2 - /etc/pam.d/common-auth
 
@@ -72,7 +176,7 @@ sudo cp /etc/pam.d/common-auth /etc/pam.d/common-auth.bak
 
 It should look something like this:
 
-![PAMFaillock](./assets/PAM-faillock.png)
+![PAMFaillock](./assets/PAM-commun-account.png)
 
 ## Checking and resetting failed attempts
 
@@ -90,76 +194,80 @@ faillock --user username --reset
 ```
 
 # Configuring the Shared Directory
+### Shared Directories
 
-The best way to configure a folder is to use **2 groups** instead of setting permissions for every user one by one with ACLs (Access Control Lists). Once the groups exist, I only add or remove users from the groups, and the access changes by itself. Each group has a role.
+| Folder | Who can do what |
+|---|---|
+| `/srv/project` | `admin` and `developer` read and write, `deploy` reads only, everyone else has nothing |
+| `/srv/scratch` | everyone can create files, each user can delete only their own |
 
-| Group | Role | Rights on the folder | Members |
-|---|---|---|---|
-| `projectteam` | writers | read, write, enter (`rwx`) | `admin1`, `dev1` |
-| `project-readers` | readers | read, enter (`r-x`) | `deploy1` |
+#### Project Directory
 
-Everyone else has no access.
+    apt install acl
+    mkdir /srv/project
+    chown root:developer /srv/project
+    chmod 2770 /srv/project
+    setfacl -m g:admin:rwx,g:deploy:rx,d:g:admin:rwx,d:g:deploy:rx /srv/project
 
-## 1. Create the groups and add the users
+| Command | Job |
+|---|---|
+| `chown root:developer` | the folder belongs to the `developer` group |
+| `chmod 2770` | setgid (`2`): new files keep the group. Group has full access (`77`), others have nothing (`0`) |
+| `setfacl -m g:admin:rwx,g:deploy:rx` | `admin` gets read and write, `deploy` gets read only |
+| `d:` entries | default ACL: new files copy the same rules, so no `chmod` is needed |
 
-```bash
-addgroup projectteam
-addgroup project-readers
-adduser admin1 projectteam
-adduser dev1 projectteam
-adduser deploy1 project-readers
-```
+Check:
 
-## 2. Create the folder
+    getfacl /srv/project
 
-```bash
-mkdir /srv/project
-```
+![getfacl](./assets/SHARED_directory1.png)
 
-## 3. Give the folder to the writers group
+Test:
 
-```bash
-chown root:projectteam /srv/project
-```
+    sudo -u dev1 sh -c 'echo "from dev1" > /srv/project/f.txt'
+    sudo -u admin1 sh -c 'echo "edited by admin1" >> /srv/project/f.txt'
+    sudo -u deploy1 cat /srv/project/f.txt
+    sudo -u deploy1 sh -c 'echo x >> /srv/project/f.txt'
 
-## 4. Set the base permissions
+| Command | Expected |
+|---|---|
+| `dev1` creates a file | works |
+| `admin1` edits it | works |
+| `deploy1` reads it | works |
+| `deploy1` writes to it | Permission denied |
 
-```bash
-chmod 2770 /srv/project
-```
+#### Scratch Directory
 
-- `2` = setgid: new files get the group `projectteam`
-- `7` = owner: read, write, enter
-- `7` = group: read, write, enter
-- `0` = others: nothing
+    mkdir /srv/scratch
+    chmod 1777 /srv/scratch
 
-## 5. Give the readers group access (ACL)
+The `1` is the sticky bit: only the owner of a file can delete it. Everyone can still create files (`777`).
 
-```bash
-setfacl -m g:project-readers:rx /srv/project
-```
+Check:
 
-`-m` means "add this rule". `g:project-readers:rx` means "the group `project-readers` gets read and enter".
+    ls -ld /srv/scratch
 
-## 6. Make new files follow the same rules (default ACL)
+Expected: `drwxrwxrwt`. The `t` is the sticky bit.
 
-```bash
-setfacl -d -m u::rwx /srv/project
-setfacl -d -m g::rwx /srv/project
-setfacl -d -m o::--- /srv/project
-setfacl -d -m g:project-readers:rx /srv/project
-```
+Test:
 
-`-d` means "default": a template copied to every new file or folder.
+    sudo -u dev1 touch /srv/scratch/dev1.txt
+    sudo -u deploy1 rm /srv/scratch/dev1.txt
+    sudo -u dev1 rm /srv/scratch/dev1.txt
 
-- `u::rwx`: the creator of the file can do everything
-- `g::rwx`: the writers group can edit the file (no `chmod` needed)
-- `o::---`: others get nothing
-- `g:project-readers:rx`: the readers group can read the file
+| Command | Expected |
+|---|---|
+| `deploy1` deletes `dev1`'s file | Operation not permitted |
+| `dev1` deletes their own file | works |
 
-## 7. Check
+#### Permission Mechanisms
 
-```bash
-ls -ld /srv/project
-getfacl /srv/project
-```
+| Mechanism | Where | Why |
+|---|---|---|
+| Role groups | all folders | access is managed by adding or removing users |
+| `770` | `/srv/project` | nothing for anyone outside the groups |
+| setgid (`2`) | `/srv/project` | new files keep the `developer` group |
+| Named group ACL | `/srv/project` | gives `admin` write and `deploy` read only, which standard permissions cannot express |
+| Default ACL (`d:`) | `/srv/project` | new files are group-writable without `chmod` |
+| Sticky bit (`1`) | `/srv/scratch` | users delete only their own files |
+
