@@ -1,7 +1,40 @@
 ![intro](./assets/A_README_intro.png)
 
+# OverView
 
-<!-- PAM -->
+This project is based on the [Linux project](https://github.com/ahtalbi/Linux-Sysadmin.git). We continue on the same Debian server that was built there, including the systemd service that was created in that project. The service is the one the roles are allowed to restart.
+
+## Goal
+
+A server where everyone logs in as root is not administered, it is only switched on. The goal is to give each person **exactly the access their role needs, and nothing more** (the principle of least privilege), and then to **prove it with a script**.
+
+## The team
+
+| Role | User | Group | Can | Cannot |
+|---|---|---|---|---|
+| admin | `admin1` | `projectteam` | manage users, install packages, restart any service, read and write the project folder | nothing is restricted |
+| developer | `dev1` | `projectteam` | read and write the project folder, restart only the service | install packages, manage users |
+| deploy | `deploy1` | `project-readers` | restart only the service, read the project folder | write to the project folder, install packages, manage users |
+
+## What we build
+
+- **SSH keys:** one key per user, and password login disabled.
+- **Groups and ACLs:** a shared project folder where the writers group can edit and the readers group can only read.
+- **sudo rules:** one file per role in `/etc/sudoers.d/`, limited to specific commands.
+- **Password policy:** passwords expire (`chage`) and accounts lock after repeated failures (`pam_faillock`).
+- **Scratch directory:** a shared folder where users can delete only their own files (sticky bit).
+- **Verification script:** `verify.sh` tries every forbidden action and checks that it is denied.
+
+## What to understand before starting
+
+- **Least privilege:** give the minimum access needed for the job.
+- **Users and groups:** a group is a list of users sharing the same rights. Access is managed by adding or removing people from groups.
+- **File permissions:** `rwx`, and the fact that on a folder `x` means "enter" and `w` means "create and delete inside".
+- **Special bits:** setgid makes new files inherit the folder's group, and the sticky bit stops users from deleting each other's files.
+- **ACLs:** extra rules for a file or folder when owner, group and others are not enough. A default ACL is a template for new files.
+- **sudo:** lets a user run specific commands as root. On Debian, the `sudo` group gives full root, so only `admin1` may be in it.
+- **PAM:** the system that runs on every login, where the lockout rule lives.
+- **SSH keys:** the private key stays with the user, the public key goes on the server. Test the key before disabling passwords.
 
 # Configuring PAM
 
