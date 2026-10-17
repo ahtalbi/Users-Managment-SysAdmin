@@ -107,3 +107,34 @@ su - admin1 ## then any command should work
 su - dev1 ## then only the restart should work
 ```
 
+### Password Policy
+
+Two rules protect the passwords of the users: they expire after a set number of days (`chage`), and accounts lock after repeated failed logins (PAM).
+
+#### Password Expiration (chage)
+
+Password aging is set per user with `chage`. It updates the aging fields in `/etc/shadow`, so the file is never edited by hand.
+
+Command used:
+
+    sudo chage -m 7 -M 90 -W 14 -I 30 <username>
+
+| Option | Value | Meaning |
+|---|---|---|
+| `-m` | 7 | minimum days before the user may change the password again |
+| `-M` | 90 | maximum days a password stays valid |
+| `-W` | 14 | days of warning before the password expires |
+| `-I` | 30 | days after expiry before the account is disabled |
+
+Useful commands:
+
+- Check the aging rules of a user: `sudo chage -l <username>`
+- Change only the maximum age, for example: `sudo chage -M 90 <username>`
+
+Example of one user:
+    sudo chage -m 7 -M 90 -W 14 -I 30 admin1
+
+Verify with `sudo chage -l <username>`:
+
+![chage result](./assets/PASSWORD_chage.png)
+
