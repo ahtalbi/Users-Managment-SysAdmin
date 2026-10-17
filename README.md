@@ -271,3 +271,51 @@ Test:
 | Default ACL (`d:`) | `/srv/project` | new files are group-writable without `chmod` |
 | Sticky bit (`1`) | `/srv/scratch` | users delete only their own files |
 
+### SSH Service Security
+
+Each user logs in with their own key pair. Password login is disabled in the SSH server.
+
+#### Keys
+
+On my computer, one key per user:
+
+    ssh-keygen -t ed25519 -f ~/.ssh/admin1_key
+    ssh-keygen -t ed25519 -f ~/.ssh/dev1_key
+    ssh-keygen -t ed25519 -f ~/.ssh/deploy1_key
+
+The public key of each user goes to the server, into that user's `~/.ssh/authorized_keys`:
+
+    ssh-copy-id -i ~/.ssh/admin1_key.pub admin1@VM_IP
+    ssh-copy-id -i ~/.ssh/dev1_key.pub dev1@VM_IP
+    ssh-copy-id -i ~/.ssh/deploy1_key.pub deploy1@VM_IP
+
+Every key was tested before passwords were disabled:
+
+    ssh -i ~/.ssh/dev1_key dev1@VM_IP
+
+#### Disable password login
+
+File: `/etc/ssh/sshd_config.d/99-hardening.conf`
+
+    PasswordAuthentication no
+    KbdInteractiveAuthentication no
+    PubkeyAuthentication yes
+
+| Setting | Meaning |
+|---|---|
+| `PasswordAuthentication no` | no login with a password |
+| `KbdInteractiveAuthentication no` | closes the other password-style login method |
+| `PubkeyAuthentication yes` | keys are the only way in |
+
+Apply and check:
+
+    sshd -t
+    systemctl reload ssh
+    sshd -T | grep passwordauthentication
+
+#### Proof
+
+    ssh -i ~/.ssh/dev1_key dev1@VM_IP            # works
+    ssh -o PubkeyAuthentication=no dev1@VM_IP    # Permission denied (publickey)
+
+Because passwords are disabled over SSH, the lockout rule (`pam_faillock`) applies to local logins only: console, `su` and `sudo`.
