@@ -285,13 +285,13 @@ On my computer, one key per user:
 
 The public key of each user goes to the server, into that user's `~/.ssh/authorized_keys`:
 
-    ssh-copy-id -i ~/.ssh/admin1_key.pub admin1@VM_IP
-    ssh-copy-id -i ~/.ssh/dev1_key.pub dev1@VM_IP
-    ssh-copy-id -i ~/.ssh/deploy1_key.pub deploy1@VM_IP
+    ssh-copy-id -p 2222 -i ~/.ssh/admin1_key.pub admin1@127.0.0.1
+    ssh-copy-id -p 2222 -i ~/.ssh/dev1_key.pub dev1@127.0.0.1
+    ssh-copy-id -p 2222 -i ~/.ssh/deploy1_key.pub deploy1@127.0.0.1
 
 Every key was tested before passwords were disabled:
 
-    ssh -i ~/.ssh/dev1_key dev1@VM_IP
+    ssh -i ~/.ssh/dev1_key dev1@localhost
 
 #### Disable password login
 
