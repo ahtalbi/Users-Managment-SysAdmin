@@ -2,21 +2,21 @@
 
 # Structure Of Readme File
 
-01 — Project Overview
-02 — System Prerequisites
-03 — Users and Role Groups
-04 — Sudo Privileges Configuration
-05 — Password and Account Security
-    05.1 — Password Expiration Management (chage)
-    05.2 — Login Failure Protection (PAM)
-06 — Shared Storage and Directory Management
-    06.1 — Project Workspace
-    06.2 — Temporary Workspace
-    06.3 — Permission Mechanisms Comparison
-07 — SSH Service Security
-08 — Verification Script
-09 — Repository Structure
-10 — Conclusion
+01 — Project Overview  
+02 — System Prerequisites  
+03 — Users and Role Groups  
+04 — Sudo Privileges Configuration  
+05 — Password and Account Security  
+    05.1 — Password Expiration Management (chage)  
+    05.2 — Login Failure Protection (PAM)  
+06 — Shared Storage and Directory Management  
+    06.1 — Project Workspace  
+    06.2 — Temporary Workspace  
+    06.3 — Permission Mechanisms Comparison  
+07 — SSH Service Security  
+08 — Verification Script  
+09 — Repository Structure  
+10 — Conclusion  
 
 # OverView
 This project is based on the [Linux project](https://github.com/ahtalbi/Linux-Sysadmin.git). We continue on the same Debian server that was built there, including the systemd service that was created in that project. The service is the one the roles are allowed to restart.
